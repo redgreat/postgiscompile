@@ -1,0 +1,54 @@
+# PostgreSQL 17.6 配置模板
+# 此文件将被复制到PostgreSQL数据目录作为主配置文件
+# 根据实际需求调整以下参数
+
+# ----------------------------- 连接设置 ----------------------------- #
+# 监听地址 (默认只监听localhost，设为'*'允许所有接口)
+listen_addresses = '*'          # 允许所有IP连接
+port = 5432                     # 数据库端口
+max_connections = 100           # 最大连接数
+superuser_reserved_connections = 3
+unix_socket_directories = '/var/run/postgresql'
+
+# ----------------------------- 资源配置 ----------------------------- #
+# 内存配置 (根据服务器内存调整，推荐设置为物理内存的25%)
+shared_buffers = 1GB            # 共享内存缓冲区
+work_mem = 16MB                 # 每个连接的工作内存
+maintenance_work_mem = 128MB    # 维护操作(如VACUUM)的内存
+
+# 写入性能优化
+wal_buffers = 16MB              # WAL缓冲区大小
+max_wal_size = 1GB              # WAL最大尺寸
+min_wal_size = 80MB             # WAL最小尺寸
+checkpoint_completion_target = 0.9
+
+# ----------------------------- 日志设置 ----------------------------- #
+log_destination = 'stderr'
+logging_collector = on          # 启用日志收集
+log_directory = 'pg_log'        # 日志目录
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+log_truncate_on_rotation = on
+log_rotation_age = 1d           # 每天轮转日志
+log_rotation_size = 100MB       # 日志达到此大小轮转
+
+# 记录所有SQL语句
+log_statement = 'ddl'           # 记录DDL语句
+# log_statement = 'all'         # 调试时可改为记录所有语句
+log_min_error_statement = 'warning'
+
+# ----------------------------- 优化设置 ----------------------------- #
+random_page_cost = 1.1          # SSD存储推荐值
+effective_cache_size = 3GB      # 推荐设置为物理内存的75%
+
+# ----------------------------- PostGIS设置 ----------------------------- #
+# PostGIS需要的额外配置
+shared_preload_libraries = 'postgis'
+
+# 时区设置
+TimeZone = 'Asia/Shanghai'
+
+# 动态共享内存分配
+dynamic_shared_memory_type = posix
+
+# 其他默认设置保留PostgreSQL默认值
+# 如需更多优化，请参考PostgreSQL官方文档: https://www.postgresql.org/docs/17/runtime-config.html

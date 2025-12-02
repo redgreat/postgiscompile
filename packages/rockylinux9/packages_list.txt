@@ -1,0 +1,117 @@
+# Rocky Linux 9 PostgreSQL 18 + PostGIS 3.6.0 离线安装包列表
+# 版本适配参考: https://trac.osgeo.org/postgis/wiki/UsersWikiPostgreSQLPostGIS
+# 最新稳定版本 (截至 2025-12-02)
+
+## 核心组件
+postgresql-18.1.tar.bz2
+  下载地址: https://ftp.postgresql.org/pub/source/v18.1/postgresql-18.1.tar.bz2
+  说明: PostgreSQL 18 最新稳定版
+
+postgis-3.6.0.tar.gz
+  下载地址: https://download.osgeo.org/postgis/source/postgis-3.6.0.tar.gz
+  说明: PostGIS 3.6.0 最新稳定版
+
+## 地理空间库依赖
+geos-3.14.0.tar.bz2
+  下载地址: https://download.osgeo.org/geos/geos-3.14.0.tar.bz2
+  说明: GEOS 3.14.0 最新稳定版
+
+proj-9.7.0.tar.gz
+  下载地址: https://download.osgeo.org/proj/proj-9.7.0.tar.gz
+  说明: PROJ 9.7.0 最新稳定版
+
+gdal-3.11.4.tar.gz
+  下载地址: https://github.com/OSGeo/gdal/releases/download/v3.11.4/gdal-3.11.4.tar.gz
+  说明: GDAL 3.11.4 最新稳定版 (可选，如需栅格支持)
+
+sfcgal-2.2.0.tar.gz
+  下载地址: https://gitlab.com/sfcgal/SFCGAL/-/archive/v2.2.0/SFCGAL-v2.2.0.tar.gz
+  说明: SFCGAL 2.2.0 最新稳定版 (可选，如需 3D 支持)
+
+## 工具库
+json-c-0.18-20240915.tar.gz
+  下载地址: https://github.com/json-c/json-c/archive/refs/tags/json-c-0.18-20240915.tar.gz
+  说明: JSON-C 0.18 最新版
+
+protobuf-c-1.5.2.tar.gz
+  下载地址: https://github.com/protobuf-c/protobuf-c/releases/download/v1.5.2/protobuf-c-1.5.2.tar.gz
+  说明: protobuf-c 1.5.2 (PostGIS 3.6 需要)
+
+sqlite-autoconf-3460000.tar.gz
+  下载地址: https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz
+  说明: SQLite 3.46.0
+
+## 编译工具
+cmake-3.31.3.tar.gz
+  下载地址: https://github.com/Kitware/CMake/releases/download/v3.31.3/cmake-3.31.3.tar.gz
+  说明: CMake 3.31.3 最新稳定版
+
+## RPM 包 (Rocky Linux 9 系统工具)
+# 以下 RPM 包可从 Rocky Linux 9 官方仓库或镜像站下载
+
+m4-1.4.19-1.el9.x86_64.rpm
+  说明: M4 宏处理器
+
+gettext-0.22.5-2.el9.x86_64.rpm
+  说明: GNU 国际化工具
+
+autoconf-2.71-3.el9.noarch.rpm
+  说明: 自动配置工具
+
+automake-1.16.5-11.el9.noarch.rpm
+  说明: 自动化构建工具
+
+bison-3.7.4-5.el9.x86_64.rpm
+  说明: 语法分析器生成器
+
+## 可选依赖 (如需完整功能)
+# 以下为可选组件，根据需求下载
+
+libxml2-devel (系统包)
+  说明: XML 支持
+
+libxslt-devel (系统包)
+  说明: XSLT 支持
+
+## 下载说明
+1. 核心组件和地理空间库必须下载
+2. protobuf-c 是 PostGIS 3.6 的新增依赖，必须安装
+3. RPM 包可从 Rocky Linux 9 官方仓库下载
+4. 所有文件应放置在 packages/rockylinux9/ 目录下
+5. 建议使用 wget 或 curl 批量下载
+
+## 批量下载脚本示例
+# 创建下载目录
+mkdir -p packages/rockylinux9
+cd packages/rockylinux9
+
+# 下载核心组件
+wget https://ftp.postgresql.org/pub/source/v18.1/postgresql-18.1.tar.bz2
+wget https://download.osgeo.org/postgis/source/postgis-3.6.0.tar.gz
+
+# 下载地理空间库
+wget https://download.osgeo.org/geos/geos-3.14.0.tar.bz2
+wget https://download.osgeo.org/proj/proj-9.7.0.tar.gz
+
+# 下载工具库
+wget https://github.com/json-c/json-c/archive/refs/tags/json-c-0.18-20240915.tar.gz
+wget https://github.com/protobuf-c/protobuf-c/releases/download/v1.5.2/protobuf-c-1.5.2.tar.gz
+wget https://www.sqlite.org/2024/sqlite-autoconf-3460000.tar.gz
+
+# 下载 CMake
+wget https://github.com/Kitware/CMake/releases/download/v3.31.3/cmake-3.31.3.tar.gz
+
+## 版本兼容性说明
+根据 PostGIS 官方文档:
+- PostgreSQL 18 支持 PostGIS 3.6.0
+- PostGIS 3.6.0 需要:
+  * GEOS >= 3.12.0 (推荐 3.14.0)
+  * PROJ >= 9.0.0 (推荐 9.7.0)
+  * protobuf-c >= 1.5.0 (新增依赖)
+  * json-c >= 0.17 (推荐 0.18)
+
+## 系统要求
+- Rocky Linux 9.x
+- 至少 15GB 可用磁盘空间
+- 至少 4GB 内存 (推荐 8GB)
+- root 权限
