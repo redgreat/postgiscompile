@@ -29,28 +29,6 @@ OS_SHORT="rockylinux9"
 # 参考: https://trac.osgeo.org/postgis/wiki/UsersWikiPostgreSQLPostGIS
 PG_VERSION="18.1"
 POSTGIS_VERSION="3.6.0"
-GEOS_VERSION="3.14.0"
-PROJ_VERSION="9.7.0"
-GDAL_VERSION="3.11.4"
-SFCGAL_VERSION="2.2.0"
-PROTOBUF_C_VERSION="1.5.2"
-JSONC_VERSION="0.18-20240915"
-SQLITE_VERSION="3.46.0"
-CMAKE_VERSION="3.31.3"
-
-# 编译工具版本
-BISON_VERSION="3.8.2"
-M4_VERSION="1.4.19"
-AUTOCONF_VERSION="2.71"
-AUTOMAKE_VERSION="1.16.5"
-GETTEXT_VERSION="0.22.5"
-
-# RPM 包名称 (Rocky Linux 9 可用的系统包)
-M4_RPM="m4-1.4.19-1.el9.x86_64.rpm"
-GETTEXT_RPM="gettext-0.21-8.el9.x86_64.rpm"
-AUTOCONF_RPM="autoconf-2.71-3.el9.noarch.rpm"
-AUTOMAKE_RPM="automake-1.16.5-11.el9.noarch.rpm"
-BISON_RPM="bison-3.7.4-5.el9.x86_64.rpm"
 
 # 日志函数
 echo_info() {
@@ -69,103 +47,98 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 检查包是否存在
-pkg_exists() {
-    pkg-config --exists "$1" 2>/dev/null
-}
+# 函数：配置DNF本地仓库并生成元数据（离线环境）
+setup_local_dnf_repo() {
+    LOCAL_REPO_DIR="${DOWNLOAD_DIR}/${OS_SHORT}"
+    LOCAL_REPO_ID="local-offline"
+    LOCAL_REPO_FILE="/etc/yum.repos.d/${LOCAL_REPO_ID}.repo"
 
-# 选择 CMake 版本
-select_cmake() {
-    if [ -x "${PREFIX_DEPS}/bin/cmake3" ]; then
-        CMAKE_BIN="${PREFIX_DEPS}/bin/cmake3"
-    elif [ -x "${PREFIX_DEPS}/bin/cmake" ]; then
-        CMAKE_BIN="${PREFIX_DEPS}/bin/cmake"
-    elif command -v cmake3 &> /dev/null; then
-        CMAKE_BIN="cmake3"
-    elif command -v cmake &> /dev/null; then
-        CMAKE_BIN="cmake"
-    else
-        echo_error "未找到cmake或cmake3，请安装后重试"
-        exit 1
-    fi
-    echo_info "使用CMake: $CMAKE_BIN ($( $CMAKE_BIN --version | head -n 1 ))" >&2
-}
-
-# 离线安装 CMake
-install_cmake_offline() {
-    echo_info "正在进行CMake离线安装..."
-    local cand1="cmake-${CMAKE_VERSION}.tar.gz"
-    local cand2="cmake-${CMAKE_VERSION}.tar.xz"
-    local pkg_path=""
-    if [ -f "${DOWNLOAD_DIR}/${OS_SHORT}/${cand1}" ]; then
-        pkg_path="${DOWNLOAD_DIR}/${OS_SHORT}/${cand1}"
-    elif [ -f "${DOWNLOAD_DIR}/${OS_SHORT}/${cand2}" ]; then
-        pkg_path="${DOWNLOAD_DIR}/${OS_SHORT}/${cand2}"
-    else
-        echo_error "错误：未找到离线包 ${cand1} 或 ${cand2}" >&2
+    if [ ! -d "${LOCAL_REPO_DIR}" ]; then
+        echo_error "未找到本地包目录：${LOCAL_REPO_DIR}"
         exit 1
     fi
 
-    extract_source "$pkg_path" "$SRC_DIR"
-    local src1="${SRC_DIR}/cmake-${CMAKE_VERSION}"
-    local src2="${SRC_DIR}/cmake-cmake-${CMAKE_VERSION}"
-    local src_dir=""
-    if [ -d "$src1" ]; then
-        src_dir="$src1"
-    elif [ -d "$src2" ]; then
-        src_dir="$src2"
-    else
-        echo_error "错误：未找到CMake源码目录 ${src1} 或 ${src2}" >&2
-        exit 1
-    fi
-
-    cd "$src_dir"
-    ./bootstrap --prefix="${PREFIX_DEPS}" --parallel=$(nproc) || {
-        echo_error "配置 CMake 失败"
-        exit 1
-    }
-    make -j$(nproc) || {
-        echo_error "编译 CMake 失败"
-        exit 1
-    }
-    make install || {
-        echo_error "安装 CMake 失败"
-        exit 1
-    }
-    echo_success "CMake 离线安装完成"
-}
-
-# 离线安装 RPM 包
-install_rpm_offline() {
-    local rpm_name="$1"
-    local rpm_path="${DOWNLOAD_DIR}/${OS_SHORT}/${rpm_name}"
-    if [ ! -f "$rpm_path" ]; then
-        if [ -f "${DOWNLOAD_DIR}/${rpm_name}" ]; then
-            rpm_path="${DOWNLOAD_DIR}/${rpm_name}"
-        else
-            echo_error "错误：未找到RPM包 ${rpm_name}"
-            echo_info "已查找路径: ${DOWNLOAD_DIR}/${OS_SHORT}/ 与 ${DOWNLOAD_DIR}/"
-            echo_info "当前可用文件列表:";
-            ls -al "${DOWNLOAD_DIR}/${OS_SHORT}" 2>/dev/null | head -n 200
-            exit 1
+    if ! command -v createrepo_c >/dev/null 2>&1; then
+        if compgen -G "${LOCAL_REPO_DIR}/createrepo_c-*.rpm" > /dev/null; then
+            echo_info "正在使用本地RPM安装 createrepo_c..."
+            dnf -y --disablerepo='*' --setopt=install_weak_deps=False --nogpgcheck --nobest --skip-broken install \
+                "${LOCAL_REPO_DIR}/createrepo_c-"*.rpm \
+                || echo_warning "createrepo_c 本地安装未完成或部分依赖缺失，继续"
         fi
     fi
-    echo_info "正在安装RPM: ${rpm_name} (路径: ${rpm_path})"
-    rpm -Uvh "$rpm_path" --nodeps --force || {
-        echo_error "安装 ${rpm_name} 失败"
-        exit 1
-    }
-    echo_success "安装完成: ${rpm_name}"
+
+    if command -v createrepo_c >/dev/null 2>&1; then
+        createrepo_c "${LOCAL_REPO_DIR}" >/dev/null 2>&1 || true
+    elif command -v createrepo >/dev/null 2>&1; then
+        createrepo "${LOCAL_REPO_DIR}" >/dev/null 2>&1 || true
+    fi
+
+    if [ -f "${LOCAL_REPO_DIR}/repodata/repomd.xml" ]; then
+        cat > "${LOCAL_REPO_FILE}" <<EOF
+[${LOCAL_REPO_ID}]
+name=Local Offline Repo
+baseurl=file://${LOCAL_REPO_DIR}
+enabled=1
+gpgcheck=0
+EOF
+        dnf clean all >/dev/null 2>&1 || true
+        dnf makecache --disablerepo='*' --enablerepo="${LOCAL_REPO_ID}" >/dev/null 2>&1 || true
+    else
+        rm -f "${LOCAL_REPO_FILE}" 2>/dev/null || true
+        echo_warning "未检测到本地仓库元数据，将改用本地RPM文件安装"
+    fi
 }
 
-# 确保工具存在，优先使用 RPM
-ensure_tool_rpm() {
-    local tool="$1"
-    local rpm="$2"
-    if command -v "$tool" > /dev/null 2>&1; then
-        echo_success "$tool 已存在，跳过安装"
+# 函数：使用DNF从本地仓库或本地RPM文件安装一组软件包
+dnf_install_local() {
+    local mode="${1:-optional}"; shift
+    local pkgs=("$@")
+    local repo_id="local-offline"
+    local repo_dir="${DOWNLOAD_DIR}/${OS_SHORT}"
+
+    if [ ${#pkgs[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    local have_repo=0
+    if [ -f "/etc/yum.repos.d/${repo_id}.repo" ] && [ -f "${repo_dir}/repodata/repomd.xml" ]; then
+        have_repo=1
+    fi
+
+    if [ ${have_repo} -eq 1 ]; then
+        if dnf -y --disablerepo='*' --enablerepo="${repo_id}" --setopt=install_weak_deps=False --nogpgcheck --nobest install "${pkgs[@]}"; then
+            echo_success "DNF 安装完成：${pkgs[*]}"
+            return 0
+        fi
+        echo_warning "DNF仓库安装失败，尝试以本地RPM文件直接安装..."
+    fi
+
+    local files=()
+    for p in "${pkgs[@]}"; do
+        local matches=("${repo_dir}/"${p}*.rpm)
+        if [ ${#matches[@]} -eq 0 ]; then
+            if [ "${mode}" = "required" ]; then
+                echo_error "缺少必需包或RPM：${p}"
+                exit 1
+            else
+                echo_warning "未找到匹配RPM：${p}，跳过"
+            fi
+            continue
+        fi
+        files+=("${matches[@]}")
+    done
+
+    if [ ${#files[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    if dnf -y --disablerepo='*' --setopt=install_weak_deps=False --nogpgcheck --nobest install "${files[@]}"; then
+        echo_success "DNF 本地RPM安装完成：${pkgs[*]}"
     else
-        install_rpm_offline "$rpm"
+        echo_error "DNF 安装失败：${pkgs[*]}"
+        if [ "${mode}" = "required" ]; then
+            exit 1
+        fi
     fi
 }
 
@@ -176,6 +149,21 @@ check_root() {
         exit 1
     fi
     echo_success "用户权限检查通过"
+}
+
+# 导入 Rocky Linux GPG 密钥
+import_rocky_gpg_key() {
+    local key_file="${DOWNLOAD_DIR}/${OS_SHORT}/RPM-GPG-KEY-Rocky-9"
+    if [ -f "$key_file" ]; then
+        echo_info "导入 Rocky Linux GPG 密钥..."
+        rpm --import "$key_file" || {
+            echo_warning "GPG 密钥导入失败，继续安装但可能提示 NOKEY"
+            return 0
+        }
+        echo_success "GPG 密钥导入完成"
+    else
+        echo_warning "未找到 GPG 密钥文件，路径: $key_file，继续安装"
+    fi
 }
 
 # 检测操作系统
@@ -212,43 +200,143 @@ detect_os() {
 # 安装系统依赖
 install_system_deps() {
     echo_info "正在安装基础编译工具和系统依赖..."
-    
-    # Rocky Linux 9 使用 dnf
-    PKG_MANAGER="dnf"
-    
-    # 启用 CRB (CodeReady Builder) 仓库 - 类似 CentOS 8 的 PowerTools
-    echo_info "启用 CRB 仓库..."
-    $PKG_MANAGER config-manager --set-enabled crb || {
-        echo_warning "启用 CRB 仓库失败，尝试继续..."
-    }
-    
-    # 安装基础编译工具
-    echo_info "安装基础编译工具..."
-    $PKG_MANAGER install -y gcc gcc-c++ make wget tar bzip2 xz || {
-        echo_error "安装基础编译工具失败"
-        exit 1
-    }
-    
-    # 安装系统开发库
-    echo_info "安装系统开发库..."
-    $PKG_MANAGER install -y openssl-devel readline-devel zlib-devel || {
-        echo_error "安装系统开发库失败"
-        exit 1
-    }
-    
-    # 安装 CMake (如果本地没有)
-    if [ ! -x "${PREFIX_DEPS}/bin/cmake3" ] && [ ! -x "${PREFIX_DEPS}/bin/cmake" ]; then
-        install_cmake_offline
+
+    import_rocky_gpg_key
+    setup_local_dnf_repo
+
+    dnf_install_local optional \
+        binutils gcc gcc-c++ make flex m4 pkgconf pkgconf-pkg-config libpkgconf glibc-devel libmpc cpp libstdc++-devel createrepo_c tar gzip bzip2 unzip bison
+
+    dnf_install_local optional \
+        cmake cmake-filesystem cmake-data cmake-rpm-macros libuv emacs-filesystem vim-filesystem
+
+    dnf_install_local required \
+        openssl-devel openssl-libs readline-devel zlib-devel
+
+    dnf_install_local required \
+        perl
+
+    dnf_install_local required \
+        python3 python3-devel
+
+    dnf_install_local required \
+        libicu libicu-devel libxml2 libxml2-devel xz-devel
+
+    dnf_install_local required \
+        avahi avahi-libs avahi-devel avahi-compat-libdns_sd avahi-compat-libdns_sd-devel libevent libevent-devel
+
+    dnf_install_local required \
+        libselinux libselinux-devel libsepol libsepol-devel pcre2 pcre2-utf16 pcre2-utf32 pcre2-devel
+
+    dnf_install_local required \
+        keyutils-libs-devel libcom_err-devel libverto-devel libkadm5 krb5-libs krb5-devel
+
+    dnf_install_local required \
+        openldap openldap-devel pam pam-devel
+
+    dnf_install_local optional \
+        json-c sqlite sqlite-devel
+
+    dnf_install_local required \
+        libjpeg-turbo libwebp jbigkit-libs libtiff libtiff-devel proj-data libcurl libcurl-devel libpng libpng-devel
+
+    dnf_install_local required \
+        proj proj-devel geos geos-devel
+
+    dnf_install_local optional \
+        SFCGAL SFCGAL-devel
+
+    dnf_install_local required \
+        unixODBC
+    dnf_install_local optional \
+        unixODBC-devel
+
+    dnf_install_local required \
+        gdal-libs gdal-devel
+        
+    dnf_install_local required \
+        protobuf
+    dnf_install_local optional \
+        protobuf-compiler protobuf-devel
+    dnf_install_local required \
+        protobuf-c protobuf-c-compiler
+    dnf_install_local optional \
+        protobuf-c-devel
+
+    echo_success "基础依赖安装完成"
+}
+
+tune_os_for_postgresql() {
+    echo_info "正在进行操作系统参数优化..."
+
+    if command -v timedatectl >/dev/null 2>&1; then
+        timedatectl set-timezone Asia/Shanghai || true
     fi
 
-    # 安装编译工具 (优先使用 RPM)
-    ensure_tool_rpm m4 "$M4_RPM"
-    ensure_tool_rpm gettextize "$GETTEXT_RPM"
-    ensure_tool_rpm autoconf "$AUTOCONF_RPM"
-    ensure_tool_rpm automake "$AUTOMAKE_RPM"
-    ensure_tool_rpm bison "$BISON_RPM"
-    
-    echo_success "基础依赖安装完成"
+    if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
+        setenforce 0 || true
+        echo_warning "SELinux 已临时设为 Permissive"
+    fi
+
+    if [ -f /etc/selinux/config ]; then
+        sed -ri 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config || true
+        echo_warning "SELinux 已配置为永久禁用(需重启生效)"
+    fi
+
+    if command -v swapoff >/dev/null 2>&1; then
+        swapoff -a || true
+    fi
+
+    local mem_kb page_size shmmax shmall
+    mem_kb=$(grep -i '^MemTotal:' /proc/meminfo | awk '{print $2}')
+    page_size=$(getconf PAGE_SIZE 2>/dev/null || echo 4096)
+    if [ -n "$mem_kb" ] && [ -n "$page_size" ]; then
+        shmmax=$((mem_kb*1024*75/100))
+        shmall=$((shmmax/page_size))
+    else
+        shmmax=$((8*1024*1024*1024))
+        shmall=$((shmmax/4096))
+    fi
+
+    cat > /etc/sysctl.d/postgresql-tuning.conf <<EOF
+vm.overcommit_memory = 1
+vm.swappiness = 1
+fs.file-max = 1000000
+kernel.shmmax = ${shmmax}
+kernel.shmall = ${shmall}
+net.ipv4.ip_local_port_range = 1024 65000
+net.core.rmem_default = 262144
+net.core.rmem_max = 4194304
+net.core.wmem_default = 262144
+net.core.wmem_max = 4194304
+EOF
+
+    sysctl -p /etc/sysctl.d/postgresql-tuning.conf >/dev/null 2>&1 || true
+
+    if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled || true
+    fi
+
+    if ! grep -q 'pam_limits.so' /etc/pam.d/login 2>/dev/null; then
+        echo 'session required /usr/lib64/security/pam_limits.so' >> /etc/pam.d/login || true
+        echo 'session required pam_limits.so' >> /etc/pam.d/login || true
+    fi
+
+    cat > /etc/security/limits.d/postgresql.conf <<EOF
+postgres soft nproc 65536
+postgres hard nproc 65536
+postgres soft nofile 65536
+postgres hard nofile 65536
+EOF
+
+    if [ -f /etc/rc.d/rc.local ]; then
+        chmod +x /etc/rc.d/rc.local || true
+        if ! grep -q 'transparent_hugepage' /etc/rc.d/rc.local; then
+            echo 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' >> /etc/rc.d/rc.local
+        fi
+    fi
+
+    echo_success "操作系统参数优化完成"
 }
 
 # 创建安装目录
@@ -278,17 +366,25 @@ prepare_directories() {
 # 获取离线包路径
 get_offline_package() {
     local package_name=$1
-    local output_dir=$2
-    
+    local base_dir=${2:-$DOWNLOAD_DIR}
+
     echo_info "正在检查 $package_name 的离线包..." >&2
-    
-    if [ -f "$output_dir/$OS_SHORT/$package_name" ]; then
-        echo "$output_dir/$OS_SHORT/$package_name"
-        return 0
-    fi
-    
+
+    local candidates=(
+        "$base_dir/$OS_SHORT/$package_name"
+        "$base_dir/srctar/$package_name"
+        "$base_dir/$package_name"
+    )
+
+    for cand in "${candidates[@]}"; do
+        if [ -f "$cand" ]; then
+            echo "$cand"
+            return 0
+        fi
+    done
+
     echo_error "错误：未找到离线包 $package_name" >&2
-    echo_info "请确保离线包已放置在：$output_dir/$OS_SHORT/" >&2
+    echo_info "已检查路径：$base_dir/$OS_SHORT/、$base_dir/srctar/、$base_dir/" >&2
     echo_info "所需文件：$package_name" >&2
     exit 1
 }
@@ -297,7 +393,7 @@ get_offline_package() {
 extract_source() {
     local archive=$1
     local target_dir=$2
-    
+    mkdir -p "$target_dir"
     echo_info "正在解压 $(basename "$archive")..."
     
     case "$archive" in
@@ -322,173 +418,6 @@ extract_source() {
     echo_success "解压完成"
 }
 
-# 安装依赖库
-install_dependencies() {
-    echo_info "开始安装依赖库..."
-    
-    export PKG_CONFIG_PATH="${PREFIX_DEPS}/lib/pkgconfig:${PKG_CONFIG_PATH}"
-    export LD_LIBRARY_PATH="${PREFIX_DEPS}/lib:${LD_LIBRARY_PATH}"
-    export PATH="${PREFIX_DEPS}/bin:${PATH}"
-    
-    # 1. 安装 SQLite
-    if pkg_exists sqlite3 || [ -x "${PREFIX_DEPS}/bin/sqlite3" ]; then
-        echo_success "SQLite 已存在，跳过编译安装"
-    else
-        echo_info "安装 SQLite ${SQLITE_VERSION}..."
-        SQLITE_PACKAGE="sqlite-autoconf-3460000.tar.gz"
-        SQLITE_PATH=$(get_offline_package "$SQLITE_PACKAGE" "$DOWNLOAD_DIR")
-        extract_source "$SQLITE_PATH" "$SRC_DIR"
-        cd "$SRC_DIR/sqlite-autoconf-3460000"
-        ./configure --prefix="$PREFIX_DEPS" \
-                    --enable-readline=no \
-                    --enable-threadsafe=yes || {
-            echo_error "配置 SQLite 失败"
-            exit 1
-        }
-        make -j$(nproc) && make install
-        echo_success "SQLite 安装完成"
-    fi
-    
-    # 2. 安装 JSON-C
-    if pkg_exists json-c || ls "${PREFIX_DEPS}/lib" 2>/dev/null | grep -q "^libjson-c"; then
-        echo_success "JSON-C 已存在，跳过编译安装"
-    else
-        echo_info "安装 JSON-C ${JSONC_VERSION}..."
-        JSONC_CANDIDATE1="json-c-${JSONC_VERSION}.tar.gz"
-        JSONC_CANDIDATE2="json-c-json-c-${JSONC_VERSION}.tar.gz"
-        if [ -f "$DOWNLOAD_DIR/$OS_SHORT/$JSONC_CANDIDATE1" ]; then
-            JSONC_PATH="$DOWNLOAD_DIR/$OS_SHORT/$JSONC_CANDIDATE1"
-        elif [ -f "$DOWNLOAD_DIR/$OS_SHORT/$JSONC_CANDIDATE2" ]; then
-            JSONC_PATH="$DOWNLOAD_DIR/$OS_SHORT/$JSONC_CANDIDATE2"
-        else
-            echo_error "错误：未找到离线包 ${JSONC_CANDIDATE1} 或 ${JSONC_CANDIDATE2}" >&2
-            exit 1
-        fi
-        extract_source "$JSONC_PATH" "$SRC_DIR"
-        JSONC_SRC1="$SRC_DIR/json-c-${JSONC_VERSION}"
-        JSONC_SRC2="$SRC_DIR/json-c-json-c-${JSONC_VERSION}"
-        if [ -d "$JSONC_SRC1" ]; then
-            JSONC_SRC="$JSONC_SRC1"
-        elif [ -d "$JSONC_SRC2" ]; then
-            JSONC_SRC="$JSONC_SRC2"
-        else
-            echo_error "错误：未找到JSON-C源码目录" >&2
-            exit 1
-        fi
-        select_cmake
-        "$CMAKE_BIN" -S "$JSONC_SRC" -B "$JSONC_SRC/build" \
-                     -DCMAKE_INSTALL_PREFIX="$PREFIX_DEPS" \
-                     -DCMAKE_BUILD_TYPE=Release \
-                     -DBUILD_SHARED_LIBS=ON \
-                     -DCMAKE_INSTALL_LIBDIR=lib || {
-            echo_error "配置 JSON-C 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --build "$JSONC_SRC/build" --config Release -- -j$(nproc) || {
-            echo_error "编译 JSON-C 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --install "$JSONC_SRC/build" || {
-            echo_error "安装 JSON-C 失败"
-            exit 1
-        }
-        echo_success "JSON-C 安装完成"
-    fi
-    
-    # 3. 安装 PROJ
-    if pkg_exists proj || [ -x "${PREFIX_DEPS}/bin/proj" ]; then
-        echo_success "PROJ 已存在，跳过编译安装"
-    else
-        echo_info "安装 PROJ ${PROJ_VERSION}..."
-        PROJ_PACKAGE="proj-${PROJ_VERSION}.tar.gz"
-        PROJ_PATH=$(get_offline_package "$PROJ_PACKAGE" "$DOWNLOAD_DIR")
-        extract_source "$PROJ_PATH" "$SRC_DIR"
-        select_cmake
-        "$CMAKE_BIN" -S "$SRC_DIR/proj-${PROJ_VERSION}" -B "$SRC_DIR/proj-${PROJ_VERSION}/build" \
-                     -DCMAKE_INSTALL_PREFIX="$PREFIX_DEPS" \
-                     -DCMAKE_BUILD_TYPE=Release \
-                     -DBUILD_SHARED_LIBS=ON \
-                     -DCMAKE_INSTALL_LIBDIR=lib \
-                     -DCMAKE_PREFIX_PATH="$PREFIX_DEPS" \
-                     -DBUILD_TESTING=OFF \
-                     -DPROJ_TESTS=OFF || {
-            echo_error "配置 PROJ 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --build "$SRC_DIR/proj-${PROJ_VERSION}/build" --config Release -- -j$(nproc) || {
-            echo_error "编译 PROJ 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --install "$SRC_DIR/proj-${PROJ_VERSION}/build" || {
-            echo_error "安装 PROJ 失败"
-            exit 1
-        }
-        echo_success "PROJ 安装完成"
-    fi
-    
-    # 4. 安装 GEOS
-    if [ -x "${PREFIX_DEPS}/bin/geos-config" ]; then
-        echo_success "GEOS 已存在，跳过编译安装"
-    else
-        echo_info "安装 GEOS ${GEOS_VERSION}..."
-        GEOS_CANDIDATE1="geos-${GEOS_VERSION}.tar.bz2"
-        GEOS_CANDIDATE2="geos-${GEOS_VERSION}.tar.gz"
-        if [ -f "$DOWNLOAD_DIR/$OS_SHORT/$GEOS_CANDIDATE1" ]; then
-            GEOS_PATH="$DOWNLOAD_DIR/$OS_SHORT/$GEOS_CANDIDATE1"
-        elif [ -f "$DOWNLOAD_DIR/$OS_SHORT/$GEOS_CANDIDATE2" ]; then
-            GEOS_PATH="$DOWNLOAD_DIR/$OS_SHORT/$GEOS_CANDIDATE2"
-        else
-            echo_error "错误：未找到离线包 ${GEOS_CANDIDATE1} 或 ${GEOS_CANDIDATE2}" >&2
-            exit 1
-        fi
-        extract_source "$GEOS_PATH" "$SRC_DIR"
-        select_cmake
-        "$CMAKE_BIN" -S "$SRC_DIR/geos-${GEOS_VERSION}" -B "$SRC_DIR/geos-${GEOS_VERSION}/build" \
-                     -DCMAKE_INSTALL_PREFIX="$PREFIX_DEPS" \
-                     -DCMAKE_BUILD_TYPE=Release \
-                     -DBUILD_SHARED_LIBS=ON \
-                     -DCMAKE_INSTALL_LIBDIR=lib || {
-            echo_error "配置 GEOS 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --build "$SRC_DIR/geos-${GEOS_VERSION}/build" --config Release -- -j$(nproc) || {
-            echo_error "编译 GEOS 失败"
-            exit 1
-        }
-        "$CMAKE_BIN" --install "$SRC_DIR/geos-${GEOS_VERSION}/build" || {
-            echo_error "安装 GEOS 失败"
-            exit 1
-        }
-        echo_success "GEOS 安装完成"
-    fi
-    
-    # 5. 安装 protobuf-c (PostGIS 3.6 需要)
-    if pkg_exists libprotobuf-c || ls "${PREFIX_DEPS}/lib" 2>/dev/null | grep -q "^libprotobuf-c"; then
-        echo_success "protobuf-c 已存在，跳过编译安装"
-    else
-        echo_info "安装 protobuf-c ${PROTOBUF_C_VERSION}..."
-        PROTOBUF_C_PACKAGE="protobuf-c-${PROTOBUF_C_VERSION}.tar.gz"
-        PROTOBUF_C_PATH=$(get_offline_package "$PROTOBUF_C_PACKAGE" "$DOWNLOAD_DIR")
-        extract_source "$PROTOBUF_C_PATH" "$SRC_DIR"
-        cd "$SRC_DIR/protobuf-c-${PROTOBUF_C_VERSION}"
-        ./configure --prefix="$PREFIX_DEPS" || {
-            echo_error "配置 protobuf-c 失败"
-            exit 1
-        }
-        make -j$(nproc) || {
-            echo_error "编译 protobuf-c 失败"
-            exit 1
-        }
-        make install || {
-            echo_error "安装 protobuf-c 失败"
-            exit 1
-        }
-        echo_success "protobuf-c 安装完成"
-    fi
-    
-    echo_success "所有依赖库安装完成"
-}
-
 # 安装 PostgreSQL
 install_postgresql() {
     echo_info "开始安装 PostgreSQL ${PG_VERSION}..."
@@ -500,32 +429,39 @@ install_postgresql() {
     cd "$SRC_DIR/postgresql-${PG_VERSION}"
     
     export PATH="${PREFIX_DEPS}/bin:${PATH}"
+    LIBS="${LIBS}"
+    if ls /usr/lib64/libdns_sd.so* >/dev/null 2>&1 || pkg-config --exists avahi-compat-libdns_sd >/dev/null 2>&1; then
+        LIBS="${LIBS} -ldns_sd"
+    fi
+    PYTHON_BIN="$(command -v python3 || echo)"
     CFLAGS="-I$PREFIX_DEPS/include" \
     LDFLAGS="-L$PREFIX_DEPS/lib -Wl,-rpath,$PREFIX_DEPS/lib" \
+    LIBS="${LIBS}" \
+    PYTHON="$PYTHON_BIN" \
     ./configure --prefix="$PREFIX_PG" \
                 --with-openssl \
                 --with-readline \
-                --without-icu \
-                --without-libxml \
-                --without-bonjour \
-                --without-gssapi \
-                --without-ldap \
-                --without-pam \
-                --without-krb5 \
-                --without-selinux \
+                --with-icu \
+                --with-libxml \
+                --with-bonjour \
+                --with-gssapi \
+                --with-ldap \
+                --with-pam \
+                --with-selinux \
+                --with-python \
                 || {
         echo_error "配置 PostgreSQL 失败"
         exit 1
     }
     
     # 编译
-    make -j$(nproc) world || {
+    make -j$(nproc) -C src all || {
         echo_error "编译 PostgreSQL 失败"
         exit 1
     }
     
     # 安装
-    make install-world || {
+    make -C src install || {
         echo_error "安装 PostgreSQL 失败"
         exit 1
     }
@@ -546,19 +482,18 @@ install_postgis() {
     # 配置环境变量
     export PKG_CONFIG_PATH="${PREFIX_DEPS}/lib/pkgconfig:${PKG_CONFIG_PATH}"
     export PATH="${PREFIX_PG}/bin:${PREFIX_DEPS}/bin:${PATH}"
+    PERL_BIN="$(command -v perl || echo)"
     
     # 配置 PostGIS
-    CFLAGS="-I$PREFIX_PG/include -I$PREFIX_DEPS/include" \
-    LDFLAGS="-L$PREFIX_PG/lib -L$PREFIX_DEPS/lib -Wl,-rpath,$PREFIX_PG/lib -Wl,-rpath,$PREFIX_DEPS/lib" \
+    GEOSCONFIG_BIN="$(command -v geos-config || echo ${PREFIX_DEPS}/bin/geos-config)"
+    CFLAGS="-I$PREFIX_PG/include" \
+    LDFLAGS="-L$PREFIX_PG/lib" \
     ./configure --prefix="$PREFIX_POSTGIS" \
                 --with-pgconfig="$PREFIX_PG/bin/pg_config" \
-                --with-geosconfig="$PREFIX_DEPS/bin/geos-config" \
-                --with-projdir="$PREFIX_DEPS" \
-                --with-proj-include="$PREFIX_DEPS/include" \
-                --with-proj-lib="$PREFIX_DEPS/lib" \
-                --with-jsondir="$PREFIX_DEPS" \
-                --without-raster \
-                --without-topology \
+                --with-geosconfig="$GEOSCONFIG_BIN" \
+                --with-sfcgal \
+                --with-raster \
+                --with-topology \
                 --without-gui \
                 --without-interrupt-tests || {
         echo_error "配置 PostGIS 失败"
@@ -566,22 +501,17 @@ install_postgis() {
     }
     
     # 编译
-    make -j$(nproc) || {
+    make -j$(nproc) PERL="$PERL_BIN" || {
         echo_error "编译 PostGIS 失败"
         exit 1
     }
     
     # 安装
-    make install || {
+    make install PERL="$PERL_BIN" || {
         echo_error "安装 PostGIS 失败"
         exit 1
     }
-    
-    # 安装扩展脚本
-    make install-extension || {
-        echo_warning "安装 PostGIS 扩展脚本失败，但不影响基本功能"
-    }
-    
+       
     echo_success "PostGIS ${POSTGIS_VERSION} 安装完成"
 }
 
@@ -617,8 +547,9 @@ initialize_postgresql() {
 configure_postgresql() {
     echo_info "正在配置 PostgreSQL..."
     
-    CONFIG_DIR="$(cd "$(dirname "$0")/../config" && pwd)"
-    if [ -f "$CONFIG_DIR/postgresql.conf.template" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    CONFIG_DIR="$SCRIPT_DIR/../config"
+    if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/postgresql.conf.template" ]; then
         cp "$CONFIG_DIR/postgresql.conf.template" "$PG_DATA_DIR/postgresql.conf"
     else
         echo_warning "配置模板不存在，修改默认配置"
@@ -627,7 +558,7 @@ configure_postgresql() {
         echo "dynamic_library_path = '$PREFIX_PG/lib/postgresql'" >> "$PG_DATA_DIR/postgresql.conf"
     fi
     
-    if [ -f "$CONFIG_DIR/pg_hba.conf.template" ]; then
+    if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/pg_hba.conf.template" ]; then
         cp "$CONFIG_DIR/pg_hba.conf.template" "$PG_DATA_DIR/pg_hba.conf"
     else
         echo_warning "认证模板不存在，修改默认配置"
@@ -708,14 +639,23 @@ enable_postgis() {
     export LD_LIBRARY_PATH="${PREFIX_DEPS}/lib:${PREFIX_PG}/lib:$LD_LIBRARY_PATH"
     
     su - postgres -c "$PREFIX_PG/bin/psql -c 'CREATE EXTENSION IF NOT EXISTS postgis;'"
-    su - postgres -c "$PREFIX_PG/bin/psql -c 'CREATE EXTENSION IF NOT EXISTS postgis_topology;'"
+    su - postgres -c "$PREFIX_PG/bin/psql -c 'CREATE EXTENSION IF NOT EXISTS postgis_raster;'" || true
+    su - postgres -c "$PREFIX_PG/bin/psql -c 'CREATE EXTENSION IF NOT EXISTS postgis_topology;'" || true
     
     POSTGIS_VERSION=$(su - postgres -c "$PREFIX_PG/bin/psql -t -c 'SELECT postgis_version();' 2>/dev/null")
     if [ -n "$POSTGIS_VERSION" ]; then
-        echo_success "PostGIS 配置完成，版本: $POSTGIS_VERSION"
+    echo_success "PostGIS 配置完成，版本: $POSTGIS_VERSION"
     else
         echo_error "PostGIS 配置失败，请检查是否正确安装"
     fi
+}
+
+enable_plpython() {
+    echo_info "正在启用 PL/Python3 扩展..."
+    su - postgres -c "$PREFIX_PG/bin/psql -c 'CREATE EXTENSION IF NOT EXISTS plpython3u;'" || {
+        echo_warning "PL/Python3 扩展启用失败，请检查python3与plpython构建是否完成"
+    }
+    echo_success "PL/Python3 扩展启用完成"
 }
 
 # 配置防火墙
@@ -776,9 +716,9 @@ main() {
     
     check_root
     detect_os
-    install_system_deps
     prepare_directories
-    install_dependencies
+    tune_os_for_postgresql
+    install_system_deps
     install_postgresql
     install_postgis
     configure_ldconfig
@@ -788,6 +728,7 @@ main() {
     start_postgresql
     configure_environment
     enable_postgis
+    enable_plpython
     configure_firewall
     set_postgres_password
     # cleanup
