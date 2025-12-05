@@ -8,7 +8,7 @@ listen_addresses = '*'          # 允许所有IP连接
 port = 5432                     # 数据库端口
 max_connections = 100           # 最大连接数
 superuser_reserved_connections = 3
-unix_socket_directories = '/var/run/postgresql'
+unix_socket_directories = '/var/run/postgresql,/tmp'
 
 # ----------------------------- 资源配置 ----------------------------- #
 # 内存配置 (根据服务器内存调整，推荐设置为物理内存的25%)
@@ -36,13 +36,21 @@ log_statement = 'ddl'           # 记录DDL语句
 # log_statement = 'all'         # 调试时可改为记录所有语句
 log_min_error_statement = 'warning'
 
+# 自动回收空间与统计
+autovacuum = on
+autovacuum_max_workers = 5
+autovacuum_naptime = 30s
+autovacuum_vacuum_threshold = 50
+autovacuum_analyze_threshold = 50
+autovacuum_vacuum_scale_factor = 0.02
+autovacuum_analyze_scale_factor = 0.05
+autovacuum_vacuum_cost_limit = 2000
+autovacuum_vacuum_cost_delay = 10ms
+log_autovacuum_min_duration = 0
+
 # ----------------------------- 优化设置 ----------------------------- #
 random_page_cost = 1.1          # SSD存储推荐值
 effective_cache_size = 3GB      # 推荐设置为物理内存的75%
-
-# ----------------------------- PostGIS设置 ----------------------------- #
-# PostGIS需要的额外配置
-shared_preload_libraries = 'postgis'
 
 # 时区设置
 TimeZone = 'Asia/Shanghai'
@@ -52,3 +60,7 @@ dynamic_shared_memory_type = posix
 
 # 其他默认设置保留PostgreSQL默认值
 # 如需更多优化，请参考PostgreSQL官方文档: https://www.postgresql.org/docs/17/runtime-config.html
+
+# ---------------------------- 三方插件设置 --------------------------- #
+# shared_preload_libraries = 'pg_stat_statements,pg_stat_kcache,pg_wait_sampling,pg_qualstats,pg_stat_monitor,pg_cron'
+# cron.database_name = 'postgres'

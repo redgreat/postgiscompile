@@ -3,7 +3,7 @@
 # 此文件控制哪些客户端可以连接，使用什么认证方法
 
 # 本地连接配置（Unix套接字）
-local   all             all                                     scram-sha-256
+local   all             all                                     peer
 
 # IPv4 本地连接
 host    all             all             127.0.0.1/32            scram-sha-256
@@ -11,8 +11,8 @@ host    all             all             127.0.0.1/32            scram-sha-256
 # IPv6 本地连接
 host    all             all             ::1/128                 scram-sha-256
 
-# 允许来自特定网段的连接（示例）
-# host    all             all             192.168.1.0/24          scram-sha-256
+# 允许来自特定网段的连接
+# host    all           all             172.16.1.0/24          scram-sha-256
 
 # 允许来自任何IP的连接（生产环境不推荐）
 host    all             all             0.0.0.0/0               scram-sha-256
