@@ -883,6 +883,93 @@ configure_pgbackrest() {
     echo_success "pgBackRest 配置完成"
 }
 
+# 配置 pgBackRest 自动备份定时器
+setup_pgbackrest_timers() {
+    echo_info "正在配置 pgBackRest 自动备份定时器..."
+    
+    # 检查 pgbackrest 是否已安装
+    if ! command -v pgbackrest > /dev/null 2>&1; then
+        echo_warning "pgbackrest 未安装,跳过定时器配置"
+        return 0
+    fi
+    
+    # 创建完整备份服务文件 (每周六)
+    cat > /etc/systemd/system/pgbackrest-full-backup.service <<'EOF'
+[Unit]
+Description=pgBackRest Full Backup
+After=postgresql-custom.service
+Requires=postgresql-custom.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/pgbackrest --stanza=main --type=full backup
+StandardOutput=journal
+StandardError=journal
+EOF
+    
+    # 创建完整备份定时器 (每周六 23:00)
+    cat > /etc/systemd/system/pgbackrest-full-backup.timer <<'EOF'
+[Unit]
+Description=pgBackRest Full Backup Timer (Weekly Saturday 23:00)
+
+[Timer]
+OnCalendar=Sat 23:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+    
+    # 创建增量备份服务文件 (每天)
+    cat > /etc/systemd/system/pgbackrest-incr-backup.service <<'EOF'
+[Unit]
+Description=pgBackRest Incremental Backup
+After=postgresql-custom.service
+Requires=postgresql-custom.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/pgbackrest --stanza=main --type=incr backup
+StandardOutput=journal
+StandardError=journal
+EOF
+    
+    # 创建增量备份定时器 (每天 23:00,但排除周六)
+    cat > /etc/systemd/system/pgbackrest-incr-backup.timer <<'EOF'
+[Unit]
+Description=pgBackRest Incremental Backup Timer (Daily 23:00 except Saturday)
+
+[Timer]
+OnCalendar=Sun-Fri 23:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+    
+    # 重新加载 systemd
+    systemctl daemon-reload
+    
+    # 启用并启动定时器
+    systemctl enable pgbackrest-full-backup.timer
+    systemctl start pgbackrest-full-backup.timer
+    
+    systemctl enable pgbackrest-incr-backup.timer
+    systemctl start pgbackrest-incr-backup.timer
+    
+    # 显示定时器状态
+    echo_info "定时器状态:"
+    systemctl list-timers pgbackrest-* --no-pager || true
+    
+    echo_success "pgBackRest 自动备份定时器配置完成"
+    echo_info "  - 完整备份: 每周六 23:00"
+    echo_info "  - 增量备份: 每天 23:00 (周日到周五)"
+}
+
 # 配置防火墙
 configure_firewall() {
     echo_info "正在配置防火墙..."
@@ -937,6 +1024,16 @@ display_info() {
         echo_info "  完整备份: sudo -u postgres pgbackrest --stanza=main --type=full backup"
         echo_info "  增量备份: sudo -u postgres pgbackrest --stanza=main --type=incr backup"
         echo_info "  查看备份: sudo -u postgres pgbackrest --stanza=main info"
+        
+        # 显示定时器状态
+        if systemctl is-enabled pgbackrest-full-backup.timer > /dev/null 2>&1; then
+            echo_info ""
+            echo_info "自动备份已启用:"
+            echo_info "  完整备份: 每周六 23:00"
+            echo_info "  增量备份: 每天 23:00 (周日到周五)"
+            echo_info "  查看定时器: systemctl list-timers pgbackrest-*"
+            echo_info "  查看日志: journalctl -u pgbackrest-*-backup.service"
+        fi
         echo_info ""
     fi
     
@@ -977,6 +1074,7 @@ main() {
     enable_common_extensions
     configure_firewall
     configure_pgbackrest
+    setup_pgbackrest_timers
     cleanup
     display_info
 }

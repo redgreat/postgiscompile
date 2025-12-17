@@ -5,10 +5,10 @@
 # 仓库配置
 # 备份存储路径
 repo1-path=/var/lib/pgbackrest
-# 保留最近 2 个完整备份
-repo1-retention-full=2
-# 保留最近 3 个差异备份
-repo1-retention-diff=3
+# 保留最近 4 个完整备份
+repo1-retention-full=4
+# 保留最近 14 个差异备份
+repo1-retention-diff=14
 
 # 日志配置
 # 控制台日志级别
