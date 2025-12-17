@@ -238,6 +238,9 @@ install_system_deps() {
         lsof tar gzip bzip2 unzip vim htop
 
     dnf_install_local optional \
+        coreutils procps-ng util-linux systemd systemd-udev pciutils dmidecode smartmontools mdadm device-mapper-multipath lvm2 device-mapper fio virt-what
+
+    dnf_install_local optional \
         binutils gcc gcc-c++ make flex m4 pkgconf pkgconf-pkg-config libpkgconf glibc-devel libmpc cpp libstdc++-devel createrepo_c bison
 
     dnf_install_local optional \
@@ -873,6 +876,15 @@ main() {
     check_root
     detect_os
     prepare_directories
+    if command -v dos2unix >/dev/null 2>&1; then
+        for f in "${INSTALLER_DIR}/script/"*.sh "${INSTALLER_DIR}/scripts/"*.sh; do
+            [ -f "$f" ] && dos2unix "$f" >/dev/null 2>&1 || true
+        done
+    else
+        for f in "${INSTALLER_DIR}/script/"*.sh "${INSTALLER_DIR}/scripts/"*.sh; do
+            [ -f "$f" ] && sed -i 's/\r$//' "$f" >/dev/null 2>&1 || true
+        done
+    fi
     tune_os_for_postgresql
     install_system_deps
     install_postgresql

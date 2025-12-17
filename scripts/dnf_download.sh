@@ -25,3 +25,9 @@ rpm -q sfcgal
 
 dnf download --enablerepo=epel --setopt=install_weak_deps=True --arch=x86_64 --resolve --alldeps \
 pg_repack
+
+
+dnf download --setopt=install_weak_deps=True --arch=x86_64 --resolve --alldeps \
+coreutils procps-ng util-linux systemd systemd-udev pciutils dmidecode smartmontools mdadm device-mapper-multipath lvm2 device-mapper fio virt-what
+
+dnf download --setopt=install_weak_deps=True --arch=x86_64 --resolve --alldeps libaio-devel
