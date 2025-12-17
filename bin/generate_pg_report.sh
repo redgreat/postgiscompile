@@ -68,7 +68,7 @@ find_psql() {
 PSQL_CMD=$(find_psql)
 
 # DEBUG: 调试开关
-DEBUG_MODE=1
+DEBUG_MODE=0
 
 # DEBUG: 调试日志函数
 debug_log() {

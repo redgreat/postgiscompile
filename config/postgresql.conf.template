@@ -22,6 +22,21 @@ max_wal_size = 1GB              # WAL最大尺寸
 min_wal_size = 80MB             # WAL最小尺寸
 checkpoint_completion_target = 0.9
 
+# ----------------------------- WAL 归档设置 ----------------------------- #
+# 归档模式 (pgbackrest 备份必需)
+wal_level = replica             # 支持归档和流复制
+archive_mode = on               # 启用归档模式
+archive_command = 'pgbackrest --stanza=main archive-push %p'
+archive_timeout = 60            # 强制归档间隔(秒)
+
+# WAL 保留设置
+wal_keep_size = 1GB             # 保留的 WAL 文件大小
+max_wal_senders = 10            # 最大 WAL 发送进程数(用于流复制)
+wal_sender_timeout = 60s        # WAL 发送超时
+
+# 恢复设置
+restore_command = 'pgbackrest --stanza=main archive-get %f "%p"'
+
 # ----------------------------- 日志设置 ----------------------------- #
 log_destination = 'stderr'
 logging_collector = on          # 启用日志收集
@@ -31,10 +46,24 @@ log_truncate_on_rotation = on
 log_rotation_age = 1d           # 每天轮转日志
 log_rotation_size = 100MB       # 日志达到此大小轮转
 
-# 记录所有SQL语句
+# 日志内容设置
+log_line_prefix = '%m [%p] %q%u@%d '  # 日志行前缀
+log_timezone = 'Asia/Shanghai'
+
+# 记录SQL语句
 log_statement = 'ddl'           # 记录DDL语句
 # log_statement = 'all'         # 调试时可改为记录所有语句
 log_min_error_statement = 'warning'
+log_min_duration_statement = 1000  # 记录执行超过1秒的SQL
+
+# 连接和断开日志
+log_connections = on
+log_disconnections = on
+log_duration = off
+
+# 检查点和归档日志
+log_checkpoints = on
+log_lock_waits = on             # 记录锁等待
 
 # 自动回收空间与统计
 autovacuum = on

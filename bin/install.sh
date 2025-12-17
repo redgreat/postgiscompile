@@ -299,6 +299,10 @@ install_system_deps() {
     dnf_install_local optional \
         protobuf-c-devel
 
+    # 安装 pgbackrest (如果有离线包)
+    dnf_install_local optional \
+        libssh2 pgbackrest
+
     echo_success "基础依赖安装完成"
 }
 
@@ -387,6 +391,11 @@ prepare_directories() {
     mkdir -p "$SRC_DIR"
     mkdir -p "$DOWNLOAD_DIR/$OS_SHORT"
     
+    # 创建 pgbackrest 目录
+    mkdir -p /var/log/pgbackrest
+    mkdir -p /etc/pgbackrest
+    mkdir -p /var/lib/pgbackrest
+    
     # 创建 postgres 用户
     if ! id postgres &> /dev/null; then
         useradd -r -m -s /bin/bash postgres
@@ -406,6 +415,11 @@ prepare_directories() {
     # 设置权限
     chown -R postgres:postgres "$PREFIX_BASE"
     chown -R postgres:postgres "$SRC_DIR"
+    
+    # 设置 pgbackrest 目录权限
+    chown postgres:postgres /var/log/pgbackrest
+    chown postgres:postgres /var/lib/pgbackrest
+    chown postgres:postgres /etc/pgbackrest
     
     echo_success "目录准备完成"
 }
@@ -821,6 +835,54 @@ enable_common_extensions() {
     echo_success "常用扩展启用完成"
 }
 
+# 配置 pgBackRest
+configure_pgbackrest() {
+    echo_info "正在配置 pgBackRest..."
+    
+    # 检查 pgbackrest 是否已安装
+    if ! command -v pgbackrest > /dev/null 2>&1; then
+        echo_warning "pgbackrest 未安装，跳过配置"
+        return 0
+    fi
+    
+    CONFIG_DIR="${INSTALLER_DIR}/config"
+    if [ -f "$CONFIG_DIR/pgbackrest.conf.template" ]; then
+        # 复制配置模板并替换路径变量
+        sed "s|/opt/postgresql/data|${PG_DATA_DIR}|g" "$CONFIG_DIR/pgbackrest.conf.template" > /etc/pgbackrest/pgbackrest.conf
+        chown postgres:postgres /etc/pgbackrest/pgbackrest.conf
+        chmod 640 /etc/pgbackrest/pgbackrest.conf
+        echo_success "pgBackRest 配置文件已创建"
+    else
+        echo_warning "pgbackrest.conf.template 不存在，跳过配置文件创建"
+        return 0
+    fi
+    
+    # 等待数据库就绪
+    if ! wait_for_postgresql_ready; then
+        echo_warning "PostgreSQL 未就绪，跳过 pgBackRest stanza 创建"
+        return 0
+    fi
+    
+    # 创建 stanza
+    echo_info "正在创建 pgBackRest stanza..."
+    if su - postgres -c "pgbackrest --stanza=main --log-level-console=info stanza-create" 2>&1; then
+        echo_success "pgBackRest stanza 创建成功"
+    else
+        echo_warning "pgBackRest stanza 创建失败，可能需要手动执行: sudo -u postgres pgbackrest --stanza=main stanza-create"
+        return 0
+    fi
+    
+    # 检查配置
+    echo_info "正在检查 pgBackRest 配置..."
+    if su - postgres -c "pgbackrest --stanza=main --log-level-console=info check" 2>&1; then
+        echo_success "pgBackRest 配置检查通过"
+    else
+        echo_warning "pgBackRest 配置检查失败，请手动执行: sudo -u postgres pgbackrest --stanza=main check"
+    fi
+    
+    echo_success "pgBackRest 配置完成"
+}
+
 # 配置防火墙
 configure_firewall() {
     echo_info "正在配置防火墙..."
@@ -865,6 +927,19 @@ display_info() {
     echo_info "连接命令: $PREFIX_PG/bin/psql -U postgres -h localhost"
     echo_info "服务控制: systemctl [start|stop|restart|status] postgresql-custom"
     echo_info ""
+    
+    # 显示 pgbackrest 信息
+    if command -v pgbackrest > /dev/null 2>&1; then
+        echo_info "pgBackRest 已安装:"
+        echo_info "  配置文件: /etc/pgbackrest/pgbackrest.conf"
+        echo_info "  备份目录: /var/lib/pgbackrest"
+        echo_info "  日志目录: /var/log/pgbackrest"
+        echo_info "  完整备份: sudo -u postgres pgbackrest --stanza=main --type=full backup"
+        echo_info "  增量备份: sudo -u postgres pgbackrest --stanza=main --type=incr backup"
+        echo_info "  查看备份: sudo -u postgres pgbackrest --stanza=main info"
+        echo_info ""
+    fi
+    
     echo_warning "注意：请重新登录或执行 'source /etc/profile.d/postgresql-custom.sh' 以加载环境变量"
     echo_success "======================================="
 }
@@ -901,6 +976,7 @@ main() {
     enable_plpython
     enable_common_extensions
     configure_firewall
+    configure_pgbackrest
     cleanup
     display_info
 }

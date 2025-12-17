@@ -1,0 +1,41 @@
+# pgBackRest 配置文件
+# 详细配置说明: https://pgbackrest.org/configuration.html
+
+[global]
+# 仓库配置
+# 备份存储路径
+repo1-path=/var/lib/pgbackrest
+# 保留最近 2 个完整备份
+repo1-retention-full=2
+# 保留最近 3 个差异备份
+repo1-retention-diff=3
+
+# 日志配置
+# 控制台日志级别
+log-level-console=info
+# 文件日志级别
+log-level-file=debug
+# 日志路径
+log-path=/var/log/pgbackrest
+
+# 性能配置
+# 最大并行进程数
+process-max=4
+
+# 备份选项
+# 快速启动备份
+start-fast=y
+# 启用增量备份
+delta=y
+# 压缩算法 (lz4/gz/bz2/zst)
+compress-type=lz4
+# 压缩级别 (0-9)
+compress-level=3
+
+[main]
+# PostgreSQL 数据目录
+pg1-path=/opt/postgresql/data
+# PostgreSQL 端口
+pg1-port=5432
+# Socket 路径
+pg1-socket-path=/run/postgresql
