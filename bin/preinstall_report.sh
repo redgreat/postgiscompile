@@ -169,7 +169,7 @@ dnf_install_local() {
     fi
 
     if [ ${have_repo} -eq 1 ]; then
-        if dnf -y --disablerepo='*' --enablerepo="${repo_id}" --setopt=install_weak_deps=False --nogpgcheck --nobest install "${pkgs[@]}"; then
+        if dnf -y --disablerepo='*' --enablerepo="${repo_id}" --setopt=install_weak_deps=False --nogpgcheck --nobest --allowerasing install "${pkgs[@]}"; then
             echo_success "DNF 安装完成:${pkgs[*]}"
             return 0
         fi
@@ -195,7 +195,7 @@ dnf_install_local() {
         return 0
     fi
 
-    if dnf -y --disablerepo='*' --setopt=install_weak_deps=False --nogpgcheck --nobest install "${files[@]}"; then
+    if dnf -y --disablerepo='*' --setopt=install_weak_deps=False --nogpgcheck --nobest --allowerasing install "${files[@]}"; then
         echo_success "DNF 本地RPM安装完成:${pkgs[*]}"
     else
         echo_warning "DNF 安装失败:${pkgs[*]}"
