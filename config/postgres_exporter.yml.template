@@ -1,0 +1,6 @@
+# postgres_exporter 主配置文件
+# 用于配置认证模块、排除数据库等
+# 官方文档: https://github.com/prometheus-community/postgres_exporter
+
+# 空配置 - 使用默认设置
+{}

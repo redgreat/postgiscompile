@@ -1,0 +1,291 @@
+# PostgreSQL 自定义查询配置
+# 适用于 postgres_exporter --extend.query-path 参数
+# PostgreSQL 17-18 系统默认监控
+
+# 复制延迟监控
+pg_replication:
+  query: "SELECT CASE WHEN NOT pg_is_in_recovery() THEN 0 ELSE GREATEST (0, EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))) END AS lag"
+  master: true
+  metrics:
+    - lag:
+        usage: GAUGE
+        description: "Replication lag behind master in seconds"
+
+# 数据库启动时间
+pg_postmaster:
+  query: "SELECT EXTRACT(EPOCH FROM pg_postmaster_start_time()) as start_time_seconds"
+  master: true
+  metrics:
+    - start_time_seconds:
+        usage: GAUGE
+        description: "Time at which postmaster started"
+
+# 数据库大小
+pg_database_size:
+  query: |
+    SELECT
+      datname,
+      pg_database_size(datname) as size_bytes
+    FROM pg_database
+    WHERE datname NOT IN ('template0', 'template1')
+  metrics:
+    - datname:
+        usage: LABEL
+        description: "Database name"
+    - size_bytes:
+        usage: GAUGE
+        description: "Database size in bytes"
+
+# 连接数和事务统计
+pg_stat_database_connections:
+  query: |
+    SELECT
+      datname,
+      numbackends as connections,
+      xact_commit,
+      xact_rollback,
+      blks_read,
+      blks_hit,
+      tup_returned,
+      tup_fetched,
+      tup_inserted,
+      tup_updated,
+      tup_deleted,
+      conflicts,
+      temp_files,
+      temp_bytes,
+      deadlocks
+    FROM pg_stat_database
+    WHERE datname IS NOT NULL
+  metrics:
+    - datname:
+        usage: LABEL
+        description: "Database name"
+    - connections:
+        usage: GAUGE
+        description: "Number of backends currently connected"
+    - xact_commit:
+        usage: COUNTER
+        description: "Number of transactions committed"
+    - xact_rollback:
+        usage: COUNTER
+        description: "Number of transactions rolled back"
+    - blks_read:
+        usage: COUNTER
+        description: "Number of disk blocks read"
+    - blks_hit:
+        usage: COUNTER
+        description: "Number of buffer hits"
+    - tup_returned:
+        usage: COUNTER
+        description: "Number of rows returned by queries"
+    - tup_fetched:
+        usage: COUNTER
+        description: "Number of rows fetched by queries"
+    - tup_inserted:
+        usage: COUNTER
+        description: "Number of rows inserted"
+    - tup_updated:
+        usage: COUNTER
+        description: "Number of rows updated"
+    - tup_deleted:
+        usage: COUNTER
+        description: "Number of rows deleted"
+    - conflicts:
+        usage: COUNTER
+        description: "Number of queries canceled due to conflicts"
+    - temp_files:
+        usage: COUNTER
+        description: "Number of temporary files created"
+    - temp_bytes:
+        usage: COUNTER
+        description: "Total amount of data written to temporary files"
+    - deadlocks:
+        usage: COUNTER
+        description: "Number of deadlocks detected"
+
+# 连接状态分布
+pg_stat_activity_connections:
+  query: |
+    SELECT
+      COALESCE(datname, 'unknown') as datname,
+      COALESCE(state, 'unknown') as state,
+      COUNT(*) as count
+    FROM pg_stat_activity
+    WHERE pid != pg_backend_pid()
+    GROUP BY datname, state
+  metrics:
+    - datname:
+        usage: LABEL
+        description: "Database name"
+    - state:
+        usage: LABEL
+        description: "Connection state"
+    - count:
+        usage: GAUGE
+        description: "Number of connections in this state"
+
+# 锁统计
+pg_locks_count:
+  query: |
+    SELECT
+      COALESCE(d.datname, 'unknown') as datname,
+      l.locktype,
+      l.mode,
+      COUNT(*) as count
+    FROM pg_locks l
+    LEFT JOIN pg_database d ON l.database = d.oid
+    GROUP BY d.datname, l.locktype, l.mode
+  metrics:
+    - datname:
+        usage: LABEL
+        description: "Database name"
+    - locktype:
+        usage: LABEL
+        description: "Type of lock"
+    - mode:
+        usage: LABEL
+        description: "Lock mode"
+    - count:
+        usage: GAUGE
+        description: "Number of locks"
+
+# Checkpoint 统计 (PostgreSQL 17+)
+pg_stat_checkpointer:
+  query: |
+    SELECT
+      num_timed as checkpoints_timed,
+      num_requested as checkpoints_req,
+      write_time as checkpoint_write_time,
+      sync_time as checkpoint_sync_time,
+      buffers_written
+    FROM pg_stat_checkpointer
+  metrics:
+    - checkpoints_timed:
+        usage: COUNTER
+        description: "Number of scheduled checkpoints"
+    - checkpoints_req:
+        usage: COUNTER
+        description: "Number of requested checkpoints"
+    - checkpoint_write_time:
+        usage: COUNTER
+        description: "Time spent writing checkpoints to disk (ms)"
+    - checkpoint_sync_time:
+        usage: COUNTER
+        description: "Time spent syncing checkpoints to disk (ms)"
+    - buffers_written:
+        usage: COUNTER
+        description: "Number of buffers written by checkpointer"
+
+# IO 统计 (PostgreSQL 17+)
+pg_stat_io:
+  query: |
+    SELECT
+      backend_type,
+      object,
+      context,
+      reads,
+      writes,
+      extends,
+      hits
+    FROM pg_stat_io
+    WHERE backend_type IN ('client backend', 'background writer', 'checkpointer')
+  metrics:
+    - backend_type:
+        usage: LABEL
+        description: "Type of backend"
+    - object:
+        usage: LABEL
+        description: "Target object"
+    - context:
+        usage: LABEL
+        description: "IO context"
+    - reads:
+        usage: COUNTER
+        description: "Number of read operations"
+    - writes:
+        usage: COUNTER
+        description: "Number of write operations"
+    - extends:
+        usage: COUNTER
+        description: "Number of extend operations"
+    - hits:
+        usage: COUNTER
+        description: "Number of buffer hits"
+
+# WAL 统计
+pg_stat_wal:
+  query: |
+    SELECT
+      wal_records,
+      wal_fpi,
+      wal_bytes,
+      wal_buffers_full,
+      wal_write,
+      wal_sync,
+      wal_write_time,
+      wal_sync_time
+    FROM pg_stat_wal
+  metrics:
+    - wal_records:
+        usage: COUNTER
+        description: "Total number of WAL records generated"
+    - wal_fpi:
+        usage: COUNTER
+        description: "Total number of WAL full page images generated"
+    - wal_bytes:
+        usage: COUNTER
+        description: "Total amount of WAL bytes generated"
+    - wal_buffers_full:
+        usage: COUNTER
+        description: "Number of times WAL data was written due to buffers full"
+    - wal_write:
+        usage: COUNTER
+        description: "Number of times WAL buffers were written to disk"
+    - wal_sync:
+        usage: COUNTER
+        description: "Number of times WAL files were synced to disk"
+    - wal_write_time:
+        usage: COUNTER
+        description: "Time spent writing WAL buffers to disk (ms)"
+    - wal_sync_time:
+        usage: COUNTER
+        description: "Time spent syncing WAL files to disk (ms)"
+
+# 表空间大小
+pg_tablespace_size:
+  query: |
+    SELECT
+      spcname as tablespace,
+      pg_tablespace_size(spcname) as size_bytes
+    FROM pg_tablespace
+  metrics:
+    - tablespace:
+        usage: LABEL
+        description: "Tablespace name"
+    - size_bytes:
+        usage: GAUGE
+        description: "Tablespace size in bytes"
+
+# 复制槽状态
+pg_replication_slots:
+  query: |
+    SELECT
+      slot_name,
+      slot_type,
+      COALESCE(database, 'unknown') as database,
+      active::int as active
+    FROM pg_replication_slots
+  metrics:
+    - slot_name:
+        usage: LABEL
+        description: "Replication slot name"
+    - slot_type:
+        usage: LABEL
+        description: "Slot type (physical/logical)"
+    - database:
+        usage: LABEL
+        description: "Database name"
+    - active:
+        usage: GAUGE
+        description: "Whether slot is active (1) or not (0)"
