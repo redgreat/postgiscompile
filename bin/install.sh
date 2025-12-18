@@ -637,14 +637,53 @@ EOF
 # 初始化 PostgreSQL 数据库
 initialize_postgresql() {
     echo_info "正在初始化 PostgreSQL 数据库..."
-    
+
     if [ -d "$PG_DATA_DIR" ] && [ "$(ls -A "$PG_DATA_DIR" 2>/dev/null)" ]; then
         echo_warning "数据目录 $PG_DATA_DIR 不为空，跳过初始化"
         return 0
     fi
-    
-    su - postgres -c "$PREFIX_PG/bin/initdb -D '$PG_DATA_DIR'"
-    
+
+    # 首选顺序: zh_CN.UTF-8 -> en_US.UTF-8 -> C.UTF-8 -> 任意 UTF-8 locale -> C
+    local init_locale=""
+
+    if command -v localectl >/dev/null 2>&1; then
+        for pref in "zh_CN.UTF-8" "en_US.UTF-8" "C.UTF-8"; do
+            if localectl list-locales 2>/dev/null | grep -x -i "$pref" >/dev/null 2>&1; then
+                init_locale=$(localectl list-locales 2>/dev/null | grep -x -i "$pref" | head -n1)
+                break
+            fi
+        done
+        if [ -z "$init_locale" ]; then
+            init_locale=$(localectl list-locales 2>/dev/null | grep -i 'utf-?8' | head -n1 || true)
+        fi
+    fi
+
+    if [ -z "$init_locale" ] && command -v locale >/dev/null 2>&1; then
+        for pref in "zh_CN.UTF-8" "en_US.UTF-8" "C.UTF-8"; do
+            if locale -a 2>/dev/null | grep -x -i "$pref" >/dev/null 2>&1; then
+                init_locale=$(locale -a 2>/dev/null | grep -x -i "$pref" | head -n1)
+                break
+            fi
+        done
+        if [ -z "$init_locale" ]; then
+            init_locale=$(locale -a 2>/dev/null | grep -i 'utf-?8' | head -n1 || true)
+        fi
+    fi
+
+    if [ -z "$init_locale" ]; then
+        init_locale="C"
+    fi
+
+    # 显示可用 locale 列表以便排查
+    if command -v locale >/dev/null 2>&1; then
+        local avail
+        avail=$(locale -a 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
+        echo_info "系统可用语言环境: ${avail}"
+    fi
+
+    echo_info "使用语言环境进行数据库初始化: ${init_locale}"
+    su - postgres -c "LANG='${init_locale}' LC_ALL='${init_locale}' '$PREFIX_PG/bin/initdb' -D '$PG_DATA_DIR' --encoding=UTF8 --locale='${init_locale}'"
+
     echo_success "PostgreSQL 数据库初始化完成"
 }
 
@@ -943,7 +982,7 @@ EOF
 Description=pgBackRest Incremental Backup Timer (Daily 23:00 except Saturday)
 
 [Timer]
-OnCalendar=Sun-Fri 23:00
+OnCalendar=Sun,Mon,Tue,Wed,Thu,Fri 23:00
 Persistent=true
 RandomizedDelaySec=5min
 
