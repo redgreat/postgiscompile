@@ -1,0 +1,14 @@
+[Unit]
+Description=PostgreSQL 主机系统采集服务
+After=network.target
+
+[Service]
+Type=oneshot
+User=monitor
+Group=monitor
+ExecStart=/opt/monitor/pg_collector.sh
+WorkingDirectory=/opt/monitor
+
+[Install]
+WantedBy=multi-user.target
+

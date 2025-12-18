@@ -1,0 +1,11 @@
+[Unit]
+Description=PostgreSQL 主机系统采集定时器
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

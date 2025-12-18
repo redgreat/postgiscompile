@@ -1,0 +1,10 @@
+/var/log/monitor_pg/monitor_pg.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 monitor monitor
+}
+

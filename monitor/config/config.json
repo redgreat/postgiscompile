@@ -1,0 +1,48 @@
+{
+  "db": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "dbname": "postgres",
+    "user": "monitor",
+    "password": "",
+    "password_env": "",
+    "sslmode": "",
+    "sslrootcert": "",
+    "sslcert": "",
+    "sslkey": ""
+  },
+  "webhook": {
+    "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_WITH_YOUR_KEY"
+  },
+  "interval_seconds": 300,
+  "thresholds": {
+    "connections_total": { "warning": 200, "critical": 400 },
+    "connections_active": { "warning": 50, "critical": 100 },
+    "lock_wait_ms": { "warning": 5000, "critical": 15000 },
+    "deadlocks": { "warning": 1, "critical": 2 },
+    "slow_query_ms": { "warning": 5000, "critical": 10000 },
+    "slow_query_count": { "warning": 3, "critical": 10 },
+    "bloat_pct": { "warning": 15, "critical": 30 },
+    "replication_lag_sec": { "warning": 5, "critical": 30 },
+    "disk_usage_database_bytes": { "warning": 200000000000, "critical": 500000000000 },
+    "disk_usage_tablespace_bytes": { "warning": 200000000000, "critical": 500000000000 },
+    "cpu_time_delta_ms": { "warning": 20000, "critical": 80000 },
+    "work_mem_pressure_bytes": { "warning": 104857600, "critical": 1048576000 }
+  },
+  "templates": {
+    "title": "[{severity}] PostgreSQL 监控告警 - {metric}",
+    "body": "时间: {timestamp}\n指标: {metric}\n当前值: {value}\n阈值: {threshold}\n级别: {severity}\n详情: {details}\n建议: {action}"
+  },
+  "slow_query_exclude_patterns": [
+    "pg_stat_activity",
+    "VACUUM"
+  ],
+  "log_file": "/var/log/monitor_pg/monitor_pg.log",
+  "options": {
+    "use_pg_stat_kcache": true,
+    "use_pg_stat_statements": true,
+    "collect_bloat": true,
+    "enable_replication_check": true
+  }
+}
+

@@ -1,0 +1,18 @@
+[Unit]
+Description=PostgreSQL 监控告警服务
+After=network.target
+
+[Service]
+Type=simple
+User=monitor
+Group=monitor
+Environment=MONITOR_PG_CONFIG=/etc/monitor/config.json
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/monitor/monitor_pg.py --config /etc/monitor/config.json
+Restart=always
+RestartSec=5s
+WorkingDirectory=/opt/monitor
+
+[Install]
+WantedBy=multi-user.target
+
