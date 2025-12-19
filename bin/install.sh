@@ -246,6 +246,9 @@ install_system_deps() {
     dnf_install_local optional \
         cmake cmake-filesystem cmake-data cmake-rpm-macros libuv emacs-filesystem vim-filesystem
 
+    dnf_install_local optional \
+        logrotate
+
     dnf_install_local required \
         openssl-devel openssl-libs readline-devel zlib-devel
 
@@ -532,6 +535,10 @@ install_postgresql() {
         exit 1
     }
 
+    make -C contrib/pg_trgm install || {
+        echo_warning "pg_trgm 独立安装失败，已通过 contrib 集合安装尝试处理"
+    }
+
     echo_success "PostgreSQL ${PG_VERSION} 安装完成"
 }
 
@@ -620,6 +627,59 @@ install_thirdparty_extensions() {
     echo_success "第三方扩展处理完成"
 }
 
+# 安装 pgbadger 独立工具
+install_pgbadger() {
+    echo_info "正在安装 pgbadger 工具..."
+    local tar=""
+    shopt -s nullglob
+    for pat in "${DOWNLOAD_DIR}/srctar/pgbadger-"*.tar.* "${DOWNLOAD_DIR}/pgbadger-"*.tar.*; do
+        if [ -f "$pat" ]; then
+            tar="$pat"
+            break
+        fi
+    done
+    shopt -u nullglob
+    if [ -z "$tar" ]; then
+        echo_warning "未找到 pgbadger 源码包，跳过安装"
+        return 0
+    fi
+    extract_source "$tar" "$SRC_DIR"
+    local dir=""
+    for cand in "$SRC_DIR"/pgbadger-*; do
+        if [ -d "$cand" ]; then
+            dir="$cand"
+            break
+        fi
+    done
+    if [ -z "$dir" ]; then
+        echo_warning "pgbadger 解压目录未找到，跳过安装"
+        return 0
+    fi
+    if [ -f "$dir/pgbadger" ]; then
+        install -m 0755 "$dir/pgbadger" "${PREFIX_PG}/bin/pgbadger" || {
+            cp "$dir/pgbadger" "${PREFIX_PG}/bin/pgbadger"
+            chmod 0755 "${PREFIX_PG}/bin/pgbadger"
+        }
+        echo_success "pgbadger 安装完成: ${PREFIX_PG}/bin/pgbadger"
+    else
+        if [ -f "$dir/Makefile.PL" ]; then
+            (cd "$dir" && perl Makefile.PL && make && make install PREFIX="${PREFIX_PG}") || {
+                echo_warning "通过 Makefile 安装 pgbadger 失败，尝试直接复制脚本"
+                if [ -f "$dir/pgbadger" ]; then
+                    install -m 0755 "$dir/pgbadger" "${PREFIX_PG}/bin/pgbadger"
+                else
+                    echo_warning "未找到 pgbadger 可执行脚本，跳过"
+                fi
+            }
+            if [ -x "${PREFIX_PG}/bin/pgbadger" ]; then
+                echo_success "pgbadger 安装完成: ${PREFIX_PG}/bin/pgbadger"
+            fi
+        else
+            echo_warning "未找到 pgbadger 构建文件，跳过安装"
+        fi
+    fi
+}
+
 # 配置动态库加载路径
 configure_ldconfig() {
     echo_info "正在配置动态库加载路径..."
@@ -643,7 +703,6 @@ initialize_postgresql() {
         return 0
     fi
 
-    # 首选顺序: zh_CN.UTF-8 -> en_US.UTF-8 -> C.UTF-8 -> 任意 UTF-8 locale -> C
     local init_locale=""
 
     if command -v localectl >/dev/null 2>&1; then
@@ -674,7 +733,6 @@ initialize_postgresql() {
         init_locale="C"
     fi
 
-    # 显示可用 locale 列表以便排查
     if command -v locale >/dev/null 2>&1; then
         local avail
         avail=$(locale -a 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
@@ -872,6 +930,34 @@ enable_common_extensions() {
         fi
     done
     echo_success "常用扩展启用完成"
+}
+
+configure_logrotate() {
+    local tmpl="${INSTALLER_DIR}/config/logrotate.d.postgresql.template"
+    local target="/etc/logrotate.d/postgresql"
+    mkdir -p "/etc/logrotate.d"
+    if [ -f "$tmpl" ]; then
+        sed "s|/opt/postgresql/data/pg_log/|${PG_DATA_DIR}/pg_log/|g" "$tmpl" > "$target"
+    else
+        cat > "$target" <<EOF
+${PG_DATA_DIR}/pg_log/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y-%m-%d
+    su postgres postgres
+}
+EOF
+    fi
+    if [ ! -f "/etc/cron.daily/logrotate" ]; then
+        if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files logrotate.timer >/dev/null 2>&1; then
+            systemctl enable --now logrotate.timer >/dev/null 2>&1 || true
+        fi
+    fi
 }
 
 # 配置 pgBackRest
@@ -1101,6 +1187,7 @@ main() {
     install_postgresql
     install_postgis
     install_thirdparty_extensions
+    install_pgbadger
     configure_ldconfig
     initialize_postgresql
     configure_postgresql
@@ -1114,6 +1201,7 @@ main() {
     configure_firewall
     configure_pgbackrest
     setup_pgbackrest_timers
+    configure_logrotate
     cleanup
     display_info
 }

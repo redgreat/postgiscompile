@@ -38,7 +38,7 @@ wal_sender_timeout = 60s        # WAL 发送超时
 restore_command = 'pgbackrest --stanza=main archive-get %f "%p"'
 
 # ----------------------------- 日志设置 ----------------------------- #
-log_destination = 'stderr'
+log_destination = 'csvlog'
 logging_collector = on          # 启用日志收集
 log_directory = 'pg_log'        # 日志目录
 log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
@@ -47,8 +47,10 @@ log_rotation_age = 1d           # 每天轮转日志
 log_rotation_size = 100MB       # 日志达到此大小轮转
 
 # 日志内容设置
-log_line_prefix = '%m [%p] %q%u@%d '  # 日志行前缀
+log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '  # 日志行前缀
 log_timezone = 'Asia/Shanghai'
+log_error_verbosity = verbose
+log_temp_files = 1024
 
 # 记录SQL语句
 log_statement = 'ddl'           # 记录DDL语句
@@ -83,6 +85,7 @@ effective_cache_size = 3GB      # 推荐设置为物理内存的75%
 
 # 时区设置
 TimeZone = 'Asia/Shanghai'
+lc_messages = 'C'
 
 # 动态共享内存分配
 dynamic_shared_memory_type = posix
