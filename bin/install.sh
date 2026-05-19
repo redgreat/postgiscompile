@@ -24,6 +24,13 @@ SRC_DIR="/tmp/pg_build"
 INSTALLER_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DOWNLOAD_DIR="${INSTALLER_DIR}/packages"
 
+# 存储搭建脚本写入的环境（storage_setup.sh）
+if [ -f /etc/postgiscompile/storage.env ]; then
+    # shellcheck disable=SC1091
+    source /etc/postgiscompile/storage.env
+    PG_DATA_DIR="${PG_DATA_DIR:-${PREFIX_BASE}/data}"
+fi
+
 # RHEL 版本信息
 # 参考: https://trac.osgeo.org/postgis/wiki/UsersWikiPostgreSQLPostGIS
 # 已验证版本:
@@ -740,7 +747,12 @@ initialize_postgresql() {
     fi
 
     echo_info "使用语言环境进行数据库初始化: ${init_locale}"
-    su - postgres -c "LANG='${init_locale}' LC_ALL='${init_locale}' '$PREFIX_PG/bin/initdb' -D '$PG_DATA_DIR' --encoding=UTF8 --locale='${init_locale}'"
+    local initdb_extra=""
+    if [ -n "${PG_WAL_DIR:-}" ] && [ -d "${PG_WAL_DIR}" ] && [ "${PG_WAL_DIR}" != "${PG_DATA_DIR}/pg_wal" ]; then
+        initdb_extra="--waldir='${PG_WAL_DIR}'"
+        echo_info "WAL 目录: ${PG_WAL_DIR}"
+    fi
+    su - postgres -c "LANG='${init_locale}' LC_ALL='${init_locale}' '$PREFIX_PG/bin/initdb' -D '$PG_DATA_DIR' ${initdb_extra} --encoding=UTF8 --locale='${init_locale}'"
 
     echo_success "PostgreSQL 数据库初始化完成"
 }
@@ -752,6 +764,19 @@ configure_postgresql() {
     CONFIG_DIR="${INSTALLER_DIR}/config"
     if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/postgresql.conf.template" ]; then
         cp "$CONFIG_DIR/postgresql.conf.template" "$PG_DATA_DIR/postgresql.conf"
+        if [ "${STORAGE_MEDIA:-}" = "hdd" ]; then
+            sed -i 's/^random_page_cost = .*/random_page_cost = 4.0/' "$PG_DATA_DIR/postgresql.conf"
+            if grep -q '^effective_io_concurrency' "$PG_DATA_DIR/postgresql.conf"; then
+                sed -i 's/^effective_io_concurrency = .*/effective_io_concurrency = 2/' "$PG_DATA_DIR/postgresql.conf"
+            else
+                echo "effective_io_concurrency = 2" >> "$PG_DATA_DIR/postgresql.conf"
+            fi
+            if grep -q '^wal_compression' "$PG_DATA_DIR/postgresql.conf"; then
+                sed -i 's/^#*wal_compression = .*/wal_compression = on/' "$PG_DATA_DIR/postgresql.conf"
+            else
+                echo "wal_compression = on" >> "$PG_DATA_DIR/postgresql.conf"
+            fi
+        fi
     else
         echo_warning "配置模板不存在，修改默认配置"
         sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" "$PG_DATA_DIR/postgresql.conf"
