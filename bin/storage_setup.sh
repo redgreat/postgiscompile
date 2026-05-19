@@ -64,8 +64,9 @@ PostgreSQL 软 RAID 存储搭建（破坏性操作：清空指定磁盘并创建
   1. sudo bash bin/storage_plan.sh --layout 4all --yes
   2. sudo bash bin/storage_setup.sh --layout 4all --dry-run
   3. sudo bash bin/storage_setup.sh --layout 4all --yes
-  4. sudo bash bin/preinstall_report.sh
-  5. sudo bash bin/install.sh
+  4. sudo bash bin/storage_verify.sh
+  5. sudo bash bin/preinstall_report.sh
+  6. sudo bash bin/install.sh
 
 EOF
 }
@@ -322,10 +323,11 @@ write_report() {
   [ ${#WAL_DISKS[@]} -gt 0 ] && append_report "- WAL: \`${WAL_DISKS[*]}\`"
   append_report ""
   append_report "## 下一步"
-  append_report "1. \`sudo bash bin/preinstall_report.sh\` — fio 验证"
-  append_report "2. \`sudo bash bin/install.sh\` — 安装 PostgreSQL（自动读取 /etc/postgiscompile/storage.env）"
+  append_report "1. \`sudo bash bin/storage_verify.sh\` — 存储验收"
+  append_report "2. \`sudo bash bin/preinstall_report.sh\` — fio 验证"
+  append_report "3. \`sudo bash bin/install.sh\` — 安装 PostgreSQL（自动读取 /etc/postgiscompile/storage.env）"
   if storage_wal_separate; then
-    append_report "3. initdb 将使用 \`--waldir=${STORAGE_PG_WAL_DIR}\`"
+    append_report "4. initdb 将使用 \`--waldir=${STORAGE_PG_WAL_DIR}\`"
   fi
 }
 

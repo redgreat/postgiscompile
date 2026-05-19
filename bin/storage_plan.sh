@@ -326,8 +326,7 @@ main() {
 
   append "---"
   append ""
-  append "> 下一步: 确认方案后执行 \`sudo bash bin/storage_setup.sh\`（参数与规划保持一致），"
-  append "> 再执行 \`bin/preinstall_report.sh\` 对挂载点做 fio 验证，最后 \`bin/install.sh\` 安装数据库。"
+  append "> 下一步: \`storage_setup.sh\` → \`storage_verify.sh\` → \`preinstall_report.sh\` → \`install.sh\`（详见 README.md）"
 
   echo ""
   echo_ok "规划报告已生成: ${OUT_FILE}"
