@@ -171,9 +171,21 @@ check_md_device() {
     record_warn "${label}: ${md_dev} 状态: ${state:-未知}"
   fi
 
-  if echo "$detail" | grep -qi 'failed'; then
-    record_fail "${label}: ${md_dev} 存在 failed 成员盘"
-  fi
+ # 之前检查逻辑
+ # if echo "$detail" | grep -qi 'failed'; then
+ #   record_fail "${label}: ${md_dev} 存在 failed 成员盘"
+ # fi
+
+ # 修改后的检测逻辑
+ # 使用 awk 精确提取 Failed Devices 的数值
+ failed_cnt=$(echo "$detail" | awk -F': ' '/Failed Devices/ {print $2}')
+ if [ -z "$failed_cnt" ]; then
+    record_warn "${label}: 无法从输出中获取 Failed Devices 数量"
+ elif [ "$failed_cnt" -ne 0 ]; then
+    record_fail "${label}: ${md_dev} 存在 failed 成员盘 (数量: $failed_cnt)"
+ else
+    record_pass "${label}: ${md_dev} 没有 failed 成员盘"
+ fi
 
   append_report ""
   append_report "### ${label} — \`${md_dev}\`"

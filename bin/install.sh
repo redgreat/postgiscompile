@@ -821,7 +821,7 @@ After=network.target
 Type=forking
 User=postgres
 Environment=PGDATA=${PG_DATA_DIR}
-Environment=LD_LIBRARY_PATH=${PREFIX_DEPS}/lib:${PREFIX_PG}/lib:${PREFIX_PG}/lib/postgresql
+Environment=LD_LIBRARY_PATH=${PREFIX_PG}/lib
 RuntimeDirectory=postgresql
 RuntimeDirectoryMode=0755
 ExecStartPre=/bin/mkdir -p /var/run/postgresql
@@ -879,7 +879,7 @@ configure_environment() {
 cat > /etc/profile.d/postgresql-custom.sh <<EOF
 # PostgreSQL Custom Environment Variables
 export PATH=${PREFIX_PG}/bin:$PATH
-export LD_LIBRARY_PATH=${PREFIX_DEPS}/lib:${PREFIX_PG}/lib:${PREFIX_PG}/lib/postgresql:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${PREFIX_PG}/lib
 export PGDATA=${PG_DATA_DIR}
 export PGHOST=/var/run/postgresql
 EOF
@@ -896,7 +896,7 @@ enable_postgis() {
     sleep 5
     
     export PATH="${PREFIX_PG}/bin:$PATH"
-    export LD_LIBRARY_PATH="${PREFIX_DEPS}/lib:${PREFIX_PG}/lib:$LD_LIBRARY_PATH"
+    export LD_LIBRARY_PATH="${PREFIX_PG}/lib"
     
     su - postgres -c "PGHOST=/var/run/postgresql $PREFIX_PG/bin/psql --no-password -c \"ALTER SYSTEM SET dynamic_library_path = '$PREFIX_PG/lib';\"" || true
     su - postgres -c "PGHOST=/var/run/postgresql $PREFIX_PG/bin/psql --no-password -c 'SELECT pg_reload_conf();'" || true
@@ -1187,7 +1187,7 @@ display_info() {
         echo_info ""
     fi
     
-    echo_warning "注意：请重新登录或执行 'source /etc/profile.d/postgresql-custom.sh' 以加载环境变量"
+    # echo_warning "注意：请重新登录或执行 'source /etc/profile.d/postgresql-custom.sh' 以加载环境变量"
     echo_success "======================================="
 }
 
